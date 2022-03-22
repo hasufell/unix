@@ -101,12 +101,14 @@ import Foreign.ForeignPtr
 import Foreign.Marshal
 import Foreign.Ptr
 import Foreign.Storable
+import System.IO.Error ( ioeSetLocation )
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Types
 import System.Posix.Internals
 import System.Posix.Process
 import System.Posix.Process.Internals
 import Data.Dynamic
+import GHC.IO.Exception ( unsupportedOperation )
 
 ##include "rts/Signals.h"
 
@@ -114,8 +116,6 @@ import GHC.Conc hiding (Signal)
 
 #if !defined(HAVE_SIGNAL_H)
 import Control.Exception ( throw )
-import System.IO.Error ( ioeSetLocation )
-import GHC.IO.Exception ( unsupportedOperation )
 #endif
 
 -- -----------------------------------------------------------------------------
