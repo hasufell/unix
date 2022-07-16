@@ -20,9 +20,11 @@ module System.Posix.Env.PosixString (
         , getEnvDefault
         , getEnvironmentPrim
         , getEnvironment
+        , setEnvironment
         , putEnv
         , setEnv
-       , unsetEnv
+        , unsetEnv
+        , clearEnv
 
        -- * Program arguments
        , getArgs
@@ -30,12 +32,14 @@ module System.Posix.Env.PosixString (
 
 #include "HsUnix.h"
 
+import Control.Monad
 import Foreign
 import Foreign.C
 import Data.Maybe       ( fromMaybe )
 
 import GHC.IO.Encoding.UTF8 ( mkUTF8 )
 import GHC.IO.Encoding.Failure ( CodingFailureMode(..) )
+import System.Posix.Env ( clearEnv )
 import System.OsPath.Posix
 import System.OsString.Internal.Types
 import qualified System.OsPath.Data.ByteString.Short as B
@@ -97,6 +101,16 @@ getEnvironment = do
       | B.head y == _equal = (PS x, PS (B.tail y))
       | otherwise          = error $ "getEnvironment: insane variable " ++ _toStr x
 
+-- |'setEnvironment' resets the entire environment to the given list of
+-- @(key,value)@ pairs.
+setEnvironment ::
+  [(PosixString,PosixString)] {- ^ @[(key,value)]@ -} ->
+  IO ()
+setEnvironment env = do
+  clearEnv
+  forM_ env $ \(key,value) ->
+    setEnv key value True {-overwrite-}
+
 -- |The 'unsetEnv' function deletes all instances of the variable name
 -- from the environment.
 
@@ -117,7 +131,7 @@ foreign import capi unsafe "HsUnix.h unsetenv"
    c_unsetenv :: CString -> IO ()
 # endif
 #else
-unsetEnv name = putEnv (name ++ "=")
+unsetEnv name = putEnv (name <> PosixString (B.pack "="))
 #endif
 
 -- |'putEnv' function takes an argument of the form @name=value@

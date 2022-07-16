@@ -1,5 +1,5 @@
 {-# LANGUAGE CApiFFI #-}
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE Trustworthy #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -21,9 +21,11 @@ module System.Posix.Env.ByteString (
         , getEnvDefault
         , getEnvironmentPrim
         , getEnvironment
+        , setEnvironment
         , putEnv
         , setEnv
-       , unsetEnv
+        , unsetEnv
+        , clearEnv
 
        -- * Program arguments
        , getArgs
@@ -31,13 +33,18 @@ module System.Posix.Env.ByteString (
 
 #include "HsUnix.h"
 
+import Control.Monad
 import Foreign
 import Foreign.C
 import Data.Maybe       ( fromMaybe )
 
+import System.Posix.Env ( clearEnv )
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
+import System.IO.Unsafe (unsafePerformIO)
 import Data.ByteString (ByteString)
+import Data.ByteString.Internal
+import Foreign.ForeignPtr.Unsafe(unsafeForeignPtrToPtr)
 
 -- |'getEnv' looks up a variable in the environment.
 
@@ -96,6 +103,18 @@ getEnvironment = do
       | BC.head y == '=' = (x,B.tail y)
       | otherwise       = error $ "getEnvironment: insane variable " ++ BC.unpack x
 
+-- |'setEnvironment' resets the entire environment to the given list of
+-- @(key,value)@ pairs.
+--
+-- @since 2.8.0.0
+setEnvironment ::
+  [(ByteString,ByteString)] {- ^ @[(key,value)]@ -} ->
+  IO ()
+setEnvironment env = do
+  clearEnv
+  forM_ env $ \(key,value) ->
+    setEnv key value True {-overwrite-}
+
 -- |The 'unsetEnv' function deletes all instances of the variable name
 -- from the environment.
 
@@ -116,15 +135,19 @@ foreign import capi unsafe "HsUnix.h unsetenv"
    c_unsetenv :: CString -> IO ()
 # endif
 #else
-unsetEnv name = putEnv (name ++ "=")
+unsetEnv name = putEnv (name <> BC.pack "=")
 #endif
 
 -- |'putEnv' function takes an argument of the form @name=value@
 -- and is equivalent to @setEnv(key,value,True{-overwrite-})@.
 
 putEnv :: ByteString {- ^ "key=value" -} -> IO ()
-putEnv keyvalue = B.useAsCString keyvalue $ \s ->
-  throwErrnoIfMinus1_ "putenv" (c_putenv s)
+putEnv (PS fp _ l) =
+  allocaBytes (l+1) $ \buf -> do
+    let p = unsafeForeignPtrToPtr fp
+    memcpy buf p l
+    pokeByteOff buf l (0::Word8)
+    throwErrnoIfMinus1_ "putenv" (c_putenv (castPtr buf))
 
 foreign import ccall unsafe "putenv"
    c_putenv :: CString -> IO CInt
